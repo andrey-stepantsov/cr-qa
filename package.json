@@ -1,0 +1,17 @@
+{
+  "name": "cr-qa",
+  "version": "1.0.0",
+  "description": "E2E Terminal Director for Cognitive Resonance",
+  "main": "dist/director.js",
+  "scripts": {
+    "build": "tsc",
+    "test:milestone1": "env COLUMNS=120 LINES=32 asciinema rec --overwrite -c 'tsx src/director.ts' outputs/m1.cast",
+    "dev": "tsx src/director.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.0"
+  }
+}

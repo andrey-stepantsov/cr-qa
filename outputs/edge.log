@@ -1,0 +1,55 @@
+
+ ⛅️ wrangler 4.75.0 (update available [32m4.77.0[39m)
+[93m─────────────────────────────────────────────[39m
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+[2mBinding[22m                                        [2mResource[22m                  [2mMode[22m
+[37menv.ROOM_SESSION[39m ([2mRoomSession[22m)                 [31mDurable Object      [39m      [34mlocal[39m
+[37menv.NODE_REGISTRY[39m ([2mNodeRegistry[22m)               [31mDurable Object      [39m      [34mlocal[39m
+[37menv.DB[39m ([2mcr-local[22m)                              [31mD1 Database         [39m      [34mlocal[39m
+[37menv.AI[39m                                         [31mAI                  [39m      [33mremote[39m
+[37menv.SECRET_SUPER_ADMIN_IDS[39m ([2m"(hidden)"[22m)        [31mEnvironment Variable[39m      [34mlocal[39m
+[37menv.JWT_SECRET[39m ([2m"(hidden)"[22m)                    [31mEnvironment Variable[39m      [34mlocal[39m
+[37menv.CR_PUBLIC_KEY[39m ([2m"(hidden)"[22m)                 [31mEnvironment Variable[39m      [34mlocal[39m
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mAI bindings always access remote resources, and so may incur usage charges even in local dev. To suppress this warning, set `remote: true` for the binding definition in your configuration file.[0m
+
+
+[2m⎔ Starting local server...[22m
+[32m[wrangler:info][39m Ready on [32mhttp://localhost:8787[39m
+[Edge Logger] GET /api/system/health (Auth: No)
+[Edge Logger] GET /api/system/health (Auth: No)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/system/health [32m[1m200[22m OK [39m[90m(2633ms)[39m[0m
+[32m[wrangler:info][39m [0m[1mGET[22m /api/system/health [32m[1m200[22m OK [39m[90m(631ms)[39m[0m
+[Edge Logger] POST /api/auth/exchange (Auth: No)
+[Edge Logger] POST /api/auth/exchange (Auth: No)
+[32m[wrangler:info][39m [0m[1mPOST[22m /api/auth/exchange [32m[1m200[22m OK [39m[90m(10ms)[39m[0m
+[32m[wrangler:info][39m [0m[1mPOST[22m /api/auth/exchange [32m[1m200[22m OK [39m[90m(11ms)[39m[0m
+[Edge Logger] GET /api/auth/me (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/auth/me [32m[1m200[22m OK [39m[90m(3ms)[39m[0m
+[Edge Logger] GET /api/events (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/events [32m[1m200[22m OK [39m[90m(3ms)[39m[0m
+[Edge Logger] GET /api/search (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/search [31m[1m503[22m Service Unavailable [39m[90m(2ms)[39m[0m
+[Edge Logger] POST /api/events/batch (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mPOST[22m /api/events/batch [32m[1m200[22m OK [39m[90m(6ms)[39m[0m
+[Edge Logger] GET /api/events (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/events [32m[1m200[22m OK [39m[90m(3ms)[39m[0m
+[Edge Logger] POST /api/events/batch (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mPOST[22m /api/events/batch [32m[1m200[22m OK [39m[90m(5ms)[39m[0m
+[Edge Logger] GET /api/events (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/events [32m[1m200[22m OK [39m[90m(2ms)[39m[0m
+[Edge Logger] GET /api/events (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/events [32m[1m200[22m OK [39m[90m(4ms)[39m[0m
+[Edge Logger] GET /api/events (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/events [32m[1m200[22m OK [39m[90m(3ms)[39m[0m
+[Edge Logger] POST /api/events/batch (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mPOST[22m /api/events/batch [32m[1m200[22m OK [39m[90m(9ms)[39m[0m
+[Edge Logger] GET /api/events (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/events [32m[1m200[22m OK [39m[90m(4ms)[39m[0m
+[Edge Logger] GET /api/events (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mGET[22m /api/events [32m[1m200[22m OK [39m[90m(2ms)[39m[0m
+[Edge Logger] POST /api/auth/exchange (Auth: No)
+[32m[wrangler:info][39m [0m[1mPOST[22m /api/auth/exchange [32m[1m200[22m OK [39m[90m(5ms)[39m[0m
+[Edge Logger] POST /api/admin/users/revoke (Auth: Yes)
+[32m[wrangler:info][39m [0m[1mPOST[22m /api/admin/users/revoke [32m[1m200[22m OK [39m[90m(3ms)[39m[0m
