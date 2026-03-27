@@ -4,278 +4,257 @@ import fs from 'fs';
 import { StringDecoder } from 'string_decoder';
 import crypto from 'crypto';
 
-// Resolve CR root relative to cr-qa workspace
+const args = process.argv.slice(2);
+const runDir = args[0] || path.resolve(__dirname, '../outputs');
+if (!fs.existsSync(runDir)) fs.mkdirSync(runDir, { recursive: true });
+
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const CR_ROOT = path.resolve(PROJECT_ROOT, 'cognitive-resonance');
-
-// Use npx tsx directly against the CLI index to avoid requiring global links during QA
 const CR_BIN = 'npx';
 const CR_ARGS = ['tsx', path.resolve(CR_ROOT, 'apps/cli/src/index.ts')];
 
-async function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+const testEnv = { 
+  ...process.env, 
+  FORCE_COLOR: '1',
+  CR_DIR: `${process.env.HOME}/.cr`,
+  CR_ADMIN_VAULT: path.resolve(CR_ROOT, '.keys/dev'),
+  CR_BACKEND_URL: 'http://127.0.0.1:8787'
+};
+
+const START_TIME = Date.now();
+const metrics = { incinerateTime: 0, bootTime: 0, aiTime: 0, adminRevokeSuccess: false };
+
+// ---------------------------------------------------------
+// SYNTHETIC MULTI-STREAM MULTIPLEXER
+// ---------------------------------------------------------
+
+function createCastStream(name: string) {
+    const stream = fs.createWriteStream(path.join(runDir, name), { flags: 'w' });
+    stream.write(`{"version": 2, "width": 100, "height": 32}\n`);
+    return stream;
 }
 
+const adminCst = createCastStream('admin.cast');
+const edgeCst = createCastStream('edge.cast');
+const aliceCst = createCastStream('alice.cast');
+const bobCst = createCastStream('bob.cast');
+
+function logAdmin(msg: string) {
+    console.log(msg);
+    const elapsed = (Date.now() - START_TIME) / 1000;
+    adminCst.write(JSON.stringify([elapsed, "o", msg.replace(/(?<!\r)\n/g, '\r\n') + '\r\n']) + '\n');
+}
+
+function attachRecorder(proc: ChildProcess, stream: fs.WriteStream) {
+    const stdoutDec = new StringDecoder('utf8');
+    const stderrDec = new StringDecoder('utf8');
+    
+    proc.stdout?.on('data', d => {
+        const text = stdoutDec.write(d);
+        if (text) {
+           process.stdout.write(text); // Mirror to real terminal for CI debugging
+           const elapsed = (Date.now() - START_TIME) / 1000;
+           stream.write(JSON.stringify([elapsed, "o", text.replace(/(?<!\r)\n/g, '\r\n')]) + '\n');
+        }
+    });
+    
+    proc.stderr?.on('data', d => {
+        const text = stderrDec.write(d);
+        if (text) {
+           process.stderr.write(text);
+           const elapsed = (Date.now() - START_TIME) / 1000;
+           stream.write(JSON.stringify([elapsed, "o", text.replace(/(?<!\r)\n/g, '\r\n')]) + '\n');
+        }
+    });
+}
+
+function writeInputToCast(text: string, stream: fs.WriteStream) {
+   const elapsed = (Date.now() - START_TIME) / 1000;
+   stream.write(JSON.stringify([elapsed, "o", text.replace(/(?<!\r)\n/g, '\r\n')]) + '\n');
+}
+
+async function sleep(ms: number) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+// ---------------------------------------------------------
+// CORE QA LIFECYCLE
+// ---------------------------------------------------------
+
 async function runCliSequence() {
-  const args = process.argv.slice(2);
-  const runDir = args[0] || path.resolve(__dirname, '../outputs');
-  if (!fs.existsSync(runDir)) fs.mkdirSync(runDir, { recursive: true });
+  logAdmin("🎬 [Director] Starting Milestone 1 Organic Flow...");
 
-  console.log("🎬 [Director] Starting Milestone 1 Organic Flow...");
-  const metrics = { incinerateTime: 0, bootTime: 0, aiTime: 0, adminRevokeSuccess: false };
-
-  const testEnv = { 
-    ...process.env, 
-    FORCE_COLOR: '1',
-    CR_DIR: `${process.env.HOME}/.cr`,
-    CR_ADMIN_VAULT: path.resolve(CR_ROOT, '.keys/dev'),
-    CR_BACKEND_URL: 'http://127.0.0.1:8787'
-  };
-
-  // 1. INCINERATOR: Drop local state completely (D1 + SQLite)
+  // 1. INCINERATOR
   const tIncinerateStart = Date.now();
-  console.log("🔥 [Incinerator] Dropping local ~/.cr state...");
+  logAdmin("🔥 [Incinerator] Dropping local ~/.cr state...");
   fs.rmSync(`${process.env.HOME}/.cr`, { recursive: true, force: true });
-  
-  console.log("🔥 [Incinerator] Dropping Edge D1 local states...");
-  const workerWrangler = path.resolve(CR_ROOT, 'packages/cloudflare-worker/.wrangler');
-  const adminWrangler = path.resolve(CR_ROOT, 'apps/admin-worker/.wrangler');
-  fs.rmSync(workerWrangler, { recursive: true, force: true });
-  fs.rmSync(adminWrangler, { recursive: true, force: true });
-  
+  logAdmin("🔥 [Incinerator] Dropping Edge D1 local states...");
+  fs.rmSync(path.resolve(CR_ROOT, 'packages/cloudflare-worker/.wrangler'), { recursive: true, force: true });
+  fs.rmSync(path.resolve(CR_ROOT, 'apps/admin-worker/.wrangler'), { recursive: true, force: true });
   await sleep(1000);
   metrics.incinerateTime = (Date.now() - tIncinerateStart) / 1000;
 
   // 1.5. BOOTSTRAP BACKEND
-  console.log("🛠️ [Director] Applying D1 Schema...");
-  
-  const migrateProc = spawn('npx', ['wrangler', 'd1', 'execute', 'DB', '--local', '--file', 'schema.sql'], {
-     cwd: path.resolve(CR_ROOT, 'packages/cloudflare-worker'),
-     env: testEnv,
-     stdio: 'inherit' // let it print to QA stdout
+  logAdmin("🛠️ [Director] Applying D1 Schema...");
+  const migrateProc = spawn(CR_BIN, ['wrangler', 'd1', 'execute', 'DB', '--local', '--file', 'schema.sql'], {
+     cwd: path.resolve(CR_ROOT, 'packages/cloudflare-worker'), env: testEnv, stdio: ['ignore', 'pipe', 'pipe']
   });
+  attachRecorder(migrateProc, adminCst);
   await new Promise(r => migrateProc.on('close', r));
 
-  console.log("🚀 [Director] Starting isolated Cloudflare Worker...");
-  
-  try {
-     execSync('lsof -ti :8787 | xargs kill -9', { stdio: 'ignore' });
-  } catch (e) {
-     // ignore if no process is found
-  }
-  
-  // Extract the real matching public key from the CLI's admin vault
+  logAdmin("🚀 [Director] Starting isolated Cloudflare Worker...");
+  try { execSync('lsof -ti :8787 | xargs kill -9', { stdio: 'ignore' }); } catch (e) {}
+
   let crPubKeyStr = "NOT_FOUND";
   try {
      const priv = crypto.createPrivateKey(fs.readFileSync(path.join(CR_ROOT, '.keys/dev/ed25519.pem')));
      crPubKeyStr = crypto.createPublicKey(priv).export({type:'spki', format:'der'}).toString('base64');
-  } catch (e) {
-     console.error("Failed to read .keys/dev/ed25519.pem");
-  }
+  } catch (e) {}
 
-  // Ensure .dev.vars has exactly what we need for the hermetic QA test
-  // Note: We supply CR_PUBLIC_KEY as a pure base64 SPKI one-liner to avoid Wrangler multiline parsing bugs.
-  const devVarsPath = path.resolve(CR_ROOT, 'packages/cloudflare-worker/.dev.vars');
-  fs.writeFileSync(devVarsPath, `JWT_SECRET="qa_secret_key"\nCR_PUBLIC_KEY="${crPubKeyStr}"\nSECRET_SUPER_ADMIN_IDS="test100@example.com"\n`);
+  fs.writeFileSync(path.resolve(CR_ROOT, 'packages/cloudflare-worker/.dev.vars'), `JWT_SECRET="qa_secret_key"\nCR_PUBLIC_KEY="${crPubKeyStr}"\nSECRET_SUPER_ADMIN_IDS="alice@matrix.com"\n`);
 
-  // Create a synchronized secondary asciicast stream for the Edge logs
-  const START_TIME = Date.now();
   const tBootStart = Date.now();
-  const edgeCastStream = fs.createWriteStream(path.join(runDir, 'edge_m1.cast'), { flags: 'w' });
-  edgeCastStream.write(`{"version": 2, "width": 100, "height": 32}\n`);
+  const workerProc = spawn(CR_BIN, ['wrangler', 'dev', '--port', '8787'], { 
+     cwd: path.resolve(CR_ROOT, 'packages/cloudflare-worker'), env: testEnv, stdio: ['ignore', 'pipe', 'pipe'] 
+  });
+  attachRecorder(workerProc, edgeCst); // ALL edge logs go securely to edge.cast natively!
 
-  const workerNodeArgs = ['wrangler', 'dev', '--port', '8787'];
-  const workerProc = spawn('npx', workerNodeArgs, { 
-     cwd: path.resolve(CR_ROOT, 'packages/cloudflare-worker'), 
-     env: testEnv, 
-     stdio: ['ignore', 'pipe', 'pipe'] 
-  });
-  
-  const stdoutDec = new StringDecoder('utf8');
-  const stderrDec = new StringDecoder('utf8');
-  
-  workerProc.stdout.on('data', d => {
-     const rawText = stdoutDec.write(d);
-     if (rawText) {
-        const text = rawText.replace(/(?<!\r)\n/g, '\r\n');
-        const elapsed = (Date.now() - START_TIME) / 1000;
-        edgeCastStream.write(JSON.stringify([elapsed, "o", text]) + '\n');
-     }
-  });
-  workerProc.stderr.on('data', d => {
-     const rawText = stderrDec.write(d);
-     if (rawText) {
-        const text = rawText.replace(/(?<!\r)\n/g, '\r\n');
-        const elapsed = (Date.now() - START_TIME) / 1000;
-        edgeCastStream.write(JSON.stringify([elapsed, "o", text]) + '\n');
-     }
-  });
-
-  // Robust polling to ensure wrangler bind completes
-  process.stdout.write("⏳ [Director] Waiting for backend healthcheck...");
+  logAdmin("⏳ [Director] Waiting for backend healthcheck...");
   let ready = false;
   for (let i = 0; i < 30; i++) {
      try {
-        const res = await fetch('http://127.0.0.1:8787/api/system/health', {
-           signal: AbortSignal.timeout(1000)
-        });
-        if (res.ok) {
-           ready = true;
-           console.log(" ✅ UP!");
-           break;
-        }
-     } catch (e) {
-        // fetch failed, keep waiting
-     }
-     process.stdout.write(".");
+        const res = await fetch('http://127.0.0.1:8787/api/system/health', { signal: AbortSignal.timeout(1000) });
+        if (res.ok) { ready = true; logAdmin(" ✅ UP!"); break; }
+     } catch (e) {}
      await sleep(1000);
   }
-  
-  if (!ready) {
-     console.error("\n❌ [Director] Backend failed to start within 30s.");
-     workerProc.kill();
-     process.exit(1);
-  }
-
-  console.log("🚀 [Director] Backend presumed ready.");
+  if (!ready) { logAdmin("❌ [Director] Backend failed to start."); process.exit(1); }
   metrics.bootTime = (Date.now() - tBootStart) / 1000;
 
-  // Helper to spawn without pipe for fire and forget
-  const spawnCli = (args: string[], name: string): ChildProcess => {
-    console.log(`\n🤖 [Director:${name}] Executing \`cr-dev ${args.join(' ')}\``);
-    const proc = spawn(CR_BIN, [...CR_ARGS, ...args], { env: testEnv, stdio: 'inherit' });
-    return proc;
-  };
-
-  // 2. ADMIN PROVISIONING (Generate PKI Invites)
-  console.log("\n[Director] Minting PKI invite token for User A...");
-  const adminProcA = spawn(CR_BIN, [...CR_ARGS, 'admin', 'invite', 'test100@example.com'], { env: testEnv, stdio: 'pipe' });
-  let adminOutputA = '';
-  adminProcA.stdout.on('data', d => { adminOutputA += d.toString(); process.stdout.write(d); });
-  adminProcA.stderr.on('data', d => process.stderr.write(d));
+  // 2. ADMIN PROVISIONING
+  logAdmin("\n[Director] Minting PKI invite token for Alice...");
+  const adminProcA = spawn(CR_BIN, [...CR_ARGS, 'admin', 'invite', 'alice@matrix.com'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(adminProcA, adminCst);
+  
+  let outA = '';
+  adminProcA.stdout.on('data', d => outA += d.toString());
   await new Promise(r => adminProcA.on('close', r));
-  const linesA = adminOutputA.trim().split('\n');
-  const tokenA = linesA[linesA.length - 1].trim();
+  const tokenA = outA.trim().split('\n').pop()?.trim();
 
-  console.log("\n[Director] Minting PKI invite token for User B...");
-  const adminProcB = spawn(CR_BIN, [...CR_ARGS, 'admin', 'invite', 'test200@example.com'], { env: testEnv, stdio: 'pipe' });
-  let adminOutputB = '';
-  adminProcB.stdout.on('data', d => { adminOutputB += d.toString(); process.stdout.write(d); });
-  adminProcB.stderr.on('data', d => process.stderr.write(d));
+  logAdmin("\n[Director] Minting PKI invite token for Bob...");
+  const adminProcB = spawn(CR_BIN, [...CR_ARGS, 'admin', 'invite', 'bob@matrix.com'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(adminProcB, adminCst);
+  
+  let outB = '';
+  adminProcB.stdout.on('data', d => outB += d.toString());
   await new Promise(r => adminProcB.on('close', r));
-  const linesB = adminOutputB.trim().split('\n');
-  const tokenB = linesB[linesB.length - 1].trim();
+  const tokenB = outB.trim().split('\n').pop()?.trim();
 
   if (!tokenA || !tokenB || !tokenA.includes('.') || !tokenB.includes('.')) {
-    console.error("❌ Failed to parse tokens from output.");
-    workerProc.kill();
-    process.exit(1);
+      logAdmin("❌ Failed to parse tokens from output."); process.exit(1); 
   }
 
-  // 3. MULTI-IDENTITY USER SIMULATION (Activate & Profile Switch)
-  console.log(`\n👨‍💻 [Director:User] Connecting to ecosystem to materialize offline identities...`);
-  const setupChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
-  setupChat.stdout.on('data', d => process.stdout.write(d));
-  setupChat.stderr.on('data', d => process.stderr.write(d));
-
-  await sleep(3000);
-  console.log(`\n[Director] Activating test100 Profile...`);
-  setupChat.stdin.write(`/activate ${tokenA}\n`);
-  await sleep(3000);
-
-  console.log(`\n[Director] Activating test200 Profile...`);
-  setupChat.stdin.write(`/activate ${tokenB}\n`);
-  await sleep(3000);
-
-  setupChat.stdin.write('/exit\n');
-  await sleep(1000);
-  setupChat.kill();
-
-  console.log(`\n🛠️ [Director] Validating Mutli-Identity State...`);
-  spawnCli(['identity', 'ls'], 'IdentityTracker');
-  await sleep(2000);
-
-  console.log(`\n🛠️ [Director] Swapping active profile back to test100...`);
-  spawnCli(['identity', 'switch', 'test100@example.com'], 'IdentityTracker');
-  await sleep(2000);
-
-  // Assert Authenticated HTTP API Call via CLI
-  console.log(`\n🛠️ [Director] Asserting authenticated boundary via Name Change...`);
-  spawnCli(['user', 'set-name', 'Neo (The One)'], 'ProfileUpdate');
-  await sleep(3000);
-
-  // Reconnect as Active Profile
-  console.log(`\n👨‍💻 [Director:User] Re-entering ecosystem as active profile [test100@example.com]...`);
-  const activeChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
-  activeChat.stdout.on('data', d => process.stdout.write(d));
-  activeChat.stderr.on('data', d => process.stderr.write(d));
-  await sleep(3000);
-
-  // Verify REPL identity context
-  console.log(`\n[Director] Verifying internal REPL identity context...`);
-  activeChat.stdin.write(`/whoami\n`);
-  await sleep(2000);
-
-  // Prompt Trinity
-  const tAiStart = Date.now();
-  console.log(`\n[Director] Sending natural language intent...`);
-  activeChat.stdin.write(`Hello @trinity, what is your capacity?\n`);
+  // 3. CONCURRENT USER SIMULATION!
+  logAdmin(`\n👨‍💻 [Director:User] Spawning Dual Parallel Terminals...`);
+  const aliceChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(aliceChat, aliceCst);
   
-  // Wait for the AI generation to stream and complete
-  await sleep(25000);
+  const bobChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(bobChat, bobCst);
+
+  await sleep(3000);
+
+  // Authenticate both concurrently (Serialized Activation IO to prevent tokens.json race)
+  writeInputToCast(`> /activate ${tokenA}\n`, aliceCst);
+  aliceChat.stdin.write(`/activate ${tokenA}\n`);
+  await sleep(4000);
+  
+  writeInputToCast(`> /activate ${tokenB}\n`, bobCst);
+  bobChat.stdin.write(`/activate ${tokenB}\n`);
+  
+  await sleep(4000);
+
+  // Name Changes (Local boundary assertion)
+  writeInputToCast(`> /exit\n`, aliceCst);
+  aliceChat.stdin.write('/exit\n');
+  await sleep(1000);
+  
+  logAdmin(`\n🛠️ [Director] Asserting authenticated boundary via CLI Name Change for Alice...`);
+  const setAlice = spawn(CR_BIN, [...CR_ARGS, 'user', 'set-name', 'Alice / Archangel'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(setAlice, aliceCst);
+  await new Promise(r => setAlice.on('close', r));
+  
+  // Re-enter Chat for Alice
+  const aliceChat2 = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(aliceChat2, aliceCst);
+  await sleep(3000);
+
+  const tAiStart = Date.now();
+  
+  // AI Orchestrator Execution
+  logAdmin(`\n[Director] Sending Natural Language Intent from Alice...`);
+  writeInputToCast(`> @trinity Hello from Alice, tell me a joke.\n`, aliceCst);
+  aliceChat2.stdin.write(`@trinity Hello from Alice, tell me a joke.\n`);
+  
+  await sleep(5000);
+  
+  logAdmin(`\n[Director] Sending Natural Language Intent from Bob concurrently...`);
+  writeInputToCast(`> @trinity Hello from Bob, what is Alice asking you?\n`, bobCst);
+  bobChat.stdin.write(`@trinity Hello from Bob, what is Alice asking you?\n`);
+
+  await sleep(22000);
   metrics.aiTime = (Date.now() - tAiStart) / 1000;
 
-  // 4. ADMIN REVOCATION (Using Shorthand Alias)
-  console.log(`\n[Director] Proving real-time killswitch via explicit shorthand command (admin revoke)...\n`);
-  spawnCli(['admin', 'revoke', 'test100@example.com'], 'AdminKillswitch');
-
-  // Let the user process catch the revocation error
-  await sleep(5000);
-
-  // Cleanup
-  activeChat.stdin.write('/exit\n');
+  // 4. ADMIN REVOCATION
+  logAdmin(`\n[Director] Proving real-time killswitch: Revoking Alice...\n`);
+  const switchAlice = spawn(CR_BIN, [...CR_ARGS, 'identity', 'switch', 'alice@matrix.com'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(switchAlice, adminCst);
+  await new Promise(r => switchAlice.on('close', r));
   await sleep(1000);
-  activeChat.kill();
-  console.log("🛑 [Director] Shutting down isolated worker...");
-  workerProc.kill();
 
-  console.log("\\n🎬 [Director] Sequence Complete.");
-  metrics.adminRevokeSuccess = true;
+  const adminKill = spawn(CR_BIN, [...CR_ARGS, 'admin', 'revoke', 'alice@matrix.com'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(adminKill, adminCst);
+  await new Promise(r => adminKill.on('close', r));
+
+  await sleep(5000); // Allow Alice Terminal to receive network death
+
+  // Teardown
+  writeInputToCast(`> /exit\n`, aliceCst);
+  aliceChat2.stdin.write('/exit\n');
+  writeInputToCast(`> /exit\n`, bobCst);
+  bobChat.stdin.write('/exit\n');
+  await sleep(1000);
   
-  try {
-     edgeCastStream.end();
-  } catch (e) {}
+  aliceChat2.kill();
+  bobChat.kill();
+  workerProc.kill();
+  
+  logAdmin("\n🎬 [Director] Sequence Complete. 4-Way Multi-Cast finalized.");
+  metrics.adminRevokeSuccess = true;
 
-  // Generate Formal QA Report
-  const reportMd = `# Formal QA Execution Report (Phase 6)
+  [adminCst, edgeCst, aliceCst, bobCst].forEach(c => {
+      try { c.end(); } catch (e) {}
+  });
+
+  const reportMd = `# Formal QA Execution Report (Phase 6 - Multi Terminal)
 **Date:** \`${new Date().toISOString()}\`
 **Verdict:** ${metrics.adminRevokeSuccess ? '✅ PASS' : '❌ FAIL'}
 
 ## Telemetry Metrics
 - **D1 Cloud Incineration:** ${metrics.incinerateTime.toFixed(2)}s
 - **Distributed Orchestrator Boot:** ${metrics.bootTime.toFixed(2)}s
-- **AI Generation Response:** ${metrics.aiTime.toFixed(2)}s
+- **Parallel AI Request Processing:** ${metrics.aiTime.toFixed(2)}s
 
-[Open Player Dashboard](./player.html)
+[Open Multi-Terminal Grid Player Dashboard](./player.html)
 `;
   fs.writeFileSync(path.join(runDir, 'report.md'), reportMd);
   
-  // Copy static player HTML into this completely isolated run matrix
   const sourceHtml = path.resolve(__dirname, '../outputs/player.html');
-  const destHtml = path.join(runDir, 'player.html');
-  if (fs.existsSync(sourceHtml)) {
-      fs.copyFileSync(sourceHtml, destHtml);
-  }
-
-  // Clone telemetry to outputs/ for live localhost serving
-  try {
-      const edgeSrc = path.join(runDir, 'edge_m1.cast');
-      const edgeDest = path.resolve(__dirname, '../outputs/edge_m1.cast');
-      if (fs.existsSync(edgeSrc)) fs.copyFileSync(edgeSrc, edgeDest);
-  } catch (e) {}
+  if (fs.existsSync(sourceHtml)) fs.copyFileSync(sourceHtml, path.join(runDir, 'player.html'));
+  
+  // Clone to outputs
+  ['alice.cast', 'bob.cast', 'edge.cast', 'admin.cast'].forEach(f => {
+      const src = path.join(runDir, f);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.resolve(__dirname, '../outputs', f));
+  });
 }
 
-runCliSequence().catch(e => {
-  console.error(e);
-  process.exit(1);
-});
+runCliSequence().catch(e => { console.error(e); process.exit(1); });

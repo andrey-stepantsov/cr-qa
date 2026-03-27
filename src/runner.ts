@@ -14,24 +14,25 @@ fs.mkdirSync(runDir, { recursive: true });
 console.log(`\n🚀 [QA Runner] Initializing Formal E2E Suite...`);
 console.log(`📂 [QA Runner] Output Directory: ${runDir}`);
 
-const castPath = path.join(runDir, 'm1.cast');
-
-const res = spawnSync('asciinema', [
-  'rec', '--overwrite', 
-  '-c', `npx tsx src/director.ts "${runDir}"`, 
-  castPath
+const res = spawnSync('npx', [
+  'tsx', 'src/director.ts', runDir
 ], { 
-  env: { ...process.env, COLUMNS: '120', LINES: '32' }, 
+  env: { ...process.env, COLUMNS: '120', LINES: '32', FORCE_COLOR: '1' }, 
   stdio: 'inherit' 
 });
 
-if (!fs.existsSync(castPath)) {
-    console.error(`\n❌ [QA Runner] asciinema failed to generate recording.`);
+if (res.error) {
+    console.error(`\n❌ [QA Runner] Execution failed: ${res.error.message}`);
 } else {
-    // Clone latest cast to generic outputs/ for `npx serve`
+    // Clone multi-casts to generic outputs/ for `npx serve`
     try {
         const outputsDir = path.resolve(__dirname, '../outputs');
-        fs.copyFileSync(castPath, path.join(outputsDir, 'm1.cast'));
+        
+        const filesToClone = ['alice.cast', 'bob.cast', 'edge.cast', 'admin.cast'];
+        for (const f of filesToClone) {
+            const src = path.join(runDir, f);
+            if (fs.existsSync(src)) fs.copyFileSync(src, path.join(outputsDir, f));
+        }
     } catch(e) {}
 }
 
