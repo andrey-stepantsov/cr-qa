@@ -27,6 +27,12 @@ const res = spawnSync('asciinema', [
 
 if (!fs.existsSync(castPath)) {
     console.error(`\n❌ [QA Runner] asciinema failed to generate recording.`);
+} else {
+    // Clone latest cast to generic outputs/ for `npx serve`
+    try {
+        const outputsDir = path.resolve(__dirname, '../outputs');
+        fs.copyFileSync(castPath, path.join(outputsDir, 'm1.cast'));
+    } catch(e) {}
 }
 
 console.log(`\n✅ [QA Runner] Suite Finalized.`);

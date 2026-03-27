@@ -256,6 +256,13 @@ async function runCliSequence() {
   if (fs.existsSync(sourceHtml)) {
       fs.copyFileSync(sourceHtml, destHtml);
   }
+
+  // Clone telemetry to outputs/ for live localhost serving
+  try {
+      const edgeSrc = path.join(runDir, 'edge_m1.cast');
+      const edgeDest = path.resolve(__dirname, '../outputs/edge_m1.cast');
+      if (fs.existsSync(edgeSrc)) fs.copyFileSync(edgeSrc, edgeDest);
+  } catch (e) {}
 }
 
 runCliSequence().catch(e => {

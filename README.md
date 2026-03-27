@@ -35,4 +35,10 @@ npm run test:milestone1
 ```
 Once the suite completes, the script will print the absolute path to your isolated test outputs. 
 
-To view the synchronized terminals, navigate to the generated directory (e.g., `reports/2026-03-26_14-30-00_milestone1/`) and open the `player.html` file natively in any web browser.
+To view the synchronized terminals, you have two options:
+1. **Local Webserver (Recommended):** Run the following command from the `cr-qa` root to spin up a quick localhost HTTP server:
+   ```bash
+   npx serve outputs -p 3000
+   ```
+   Then open `http://localhost:3000/player` in your browser. The `outputs/` directory will always contain a mirrored copy of the absolute latest test execution!
+2. **Native File Explorer:** Navigate to the generated directory (e.g., `reports/2026-03-26_14-30-00_milestone1/`) and double-click the `player.html` file to open it natively in any web browser.
