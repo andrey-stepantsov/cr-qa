@@ -147,62 +147,85 @@ async function runCliSequence() {
     return proc;
   };
 
-  // 2. ADMIN PROVISIONING (Generate PKI Invite)
-  console.log("\n[Director] Minting PKI invite token...");
-  const adminProc = spawn(CR_BIN, [...CR_ARGS, 'admin', 'invite', 'test100@example.com'], { env: testEnv, stdio: 'pipe' });
-  
-  let adminOutput = '';
-  adminProc.stdout.on('data', d => { adminOutput += d.toString(); process.stdout.write(d); });
-  adminProc.stderr.on('data', d => process.stderr.write(d));
-  
-  await new Promise(r => adminProc.on('close', r));
+  // 2. ADMIN PROVISIONING (Generate PKI Invites)
+  console.log("\n[Director] Minting PKI invite token for User A...");
+  const adminProcA = spawn(CR_BIN, [...CR_ARGS, 'admin', 'invite', 'test100@example.com'], { env: testEnv, stdio: 'pipe' });
+  let adminOutputA = '';
+  adminProcA.stdout.on('data', d => { adminOutputA += d.toString(); process.stdout.write(d); });
+  adminProcA.stderr.on('data', d => process.stderr.write(d));
+  await new Promise(r => adminProcA.on('close', r));
+  const linesA = adminOutputA.trim().split('\n');
+  const tokenA = linesA[linesA.length - 1].trim();
 
-  // Extract the token (last line or matched base64 string)
-  const lines = adminOutput.trim().split('\n');
-  const token = lines[lines.length - 1].trim();
+  console.log("\n[Director] Minting PKI invite token for User B...");
+  const adminProcB = spawn(CR_BIN, [...CR_ARGS, 'admin', 'invite', 'test200@example.com'], { env: testEnv, stdio: 'pipe' });
+  let adminOutputB = '';
+  adminProcB.stdout.on('data', d => { adminOutputB += d.toString(); process.stdout.write(d); });
+  adminProcB.stderr.on('data', d => process.stderr.write(d));
+  await new Promise(r => adminProcB.on('close', r));
+  const linesB = adminOutputB.trim().split('\n');
+  const tokenB = linesB[linesB.length - 1].trim();
 
-  if (!token || !token.includes('.')) {
-    console.error("❌ Failed to parse token from output.");
+  if (!tokenA || !tokenB || !tokenA.includes('.') || !tokenB.includes('.')) {
+    console.error("❌ Failed to parse tokens from output.");
     workerProc.kill();
     process.exit(1);
   }
 
-  // 3. USER SIMULATION (Activate & Chat)
-  console.log(`\n👨‍💻 [Director:User] Connecting to ecosystem...`);
-  const userChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
-  
-  // Pipe output to terminal so asciinema captures it
-  userChat.stdout.on('data', d => process.stdout.write(d));
-  userChat.stderr.on('data', d => process.stderr.write(d));
+  // 3. MULTI-IDENTITY USER SIMULATION (Activate & Profile Switch)
+  console.log(`\n👨‍💻 [Director:User] Connecting to ecosystem to materialize offline identities...`);
+  const setupChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
+  setupChat.stdout.on('data', d => process.stdout.write(d));
+  setupChat.stderr.on('data', d => process.stderr.write(d));
 
-  // Give the REPL a moment to initialize
+  await sleep(3000);
+  console.log(`\n[Director] Activating test100 Profile...`);
+  setupChat.stdin.write(`/activate ${tokenA}\n`);
   await sleep(3000);
 
-  // Activate environment using the offline PKI token
-  console.log(`\n[Director] Sending /activate...`);
-  userChat.stdin.write(`/activate ${token}\n`);
-  await sleep(4000);
+  console.log(`\n[Director] Activating test200 Profile...`);
+  setupChat.stdin.write(`/activate ${tokenB}\n`);
+  await sleep(3000);
+
+  setupChat.stdin.write('/exit\n');
+  await sleep(1000);
+  setupChat.kill();
+
+  console.log(`\n🛠️ [Director] Validating Mutli-Identity State...`);
+  spawnCli(['identity', 'ls'], 'IdentityTracker');
+  await sleep(2000);
+
+  console.log(`\n🛠️ [Director] Swapping active profile back to test100...`);
+  spawnCli(['identity', 'switch', 'test100@example.com'], 'IdentityTracker');
+  await sleep(2000);
+
+  // Reconnect as Active Profile
+  console.log(`\n👨‍💻 [Director:User] Re-entering ecosystem as active profile [test100@example.com]...`);
+  const activeChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
+  activeChat.stdout.on('data', d => process.stdout.write(d));
+  activeChat.stderr.on('data', d => process.stderr.write(d));
+  await sleep(3000);
 
   // Prompt Trinity
   const tAiStart = Date.now();
   console.log(`\n[Director] Sending natural language intent...`);
-  userChat.stdin.write(`Hello @trinity, what is your capacity?\n`);
+  activeChat.stdin.write(`Hello @trinity, what is your capacity?\n`);
   
   // Wait for the AI generation to stream and complete
   await sleep(25000);
   metrics.aiTime = (Date.now() - tAiStart) / 1000;
 
-  // 4. ADMIN REVOCATION
-  console.log(`\n[Director] Proving real-time killswitch (Revoking user)...\n`);
-  spawnCli(['admin', 'users', 'revoke', 'test100@example.com'], 'AdminKillswitch');
+  // 4. ADMIN REVOCATION (Using Shorthand Alias)
+  console.log(`\n[Director] Proving real-time killswitch via explicit shorthand command (admin revoke)...\n`);
+  spawnCli(['admin', 'revoke', 'test100@example.com'], 'AdminKillswitch');
 
   // Let the user process catch the revocation error
   await sleep(5000);
 
   // Cleanup
-  userChat.stdin.write('/exit\n');
+  activeChat.stdin.write('/exit\n');
   await sleep(1000);
-  userChat.kill();
+  activeChat.kill();
   console.log("🛑 [Director] Shutting down isolated worker...");
   workerProc.kill();
 

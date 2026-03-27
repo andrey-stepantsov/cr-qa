@@ -33,4 +33,6 @@ To execute the primary flow and generate synchronized artifacts, run the E2E NPM
 npm install
 npm run test:milestone1
 ```
-Once complete, open `outputs/player.html` in your browser to observe the synchronized telemetry.
+Once the suite completes, the script will print the absolute path to your isolated test outputs. 
+
+To view the synchronized terminals, navigate to the generated directory (e.g., `reports/2026-03-26_14-30-00_milestone1/`) and open the `player.html` file natively in any web browser.
