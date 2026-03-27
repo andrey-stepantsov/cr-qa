@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cognitive Resonance Phase 6 E2E Multi-Terminal Flow</title>
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.15.1/dist/bundle/asciinema-player.css" />
+  <style>
+    body {
+      background-color: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #eaeaea;
+    }
+    
+    .transport-controls {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+      align-items: center; margin-bottom: 20px;
+      background: #2a2a2a; padding: 10px 15px; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    
+    .transport-controls button, .transport-controls select {
+      background: #333; border: 1px solid #555; color: #fff;
+      padding: 6px 12px; border-radius: 4px; cursor: pointer;
+      font-size: 13px; font-weight: 600;
+    }
+    .transport-controls button:hover, .transport-controls select:hover { background: #444; }
+    
+    .transport-controls .time-display {
+      font-family: monospace; font-size: 14px; color: #00ffcc; margin: 0 10px; min-width: 60px; text-align: center;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 20px;
+      width: 100%;
+      max-width: 2400px;
+    }
+    
+    .panel { display: flex; flex-direction: column; }
+    .panel h3 { font-size: 15px; margin-bottom: 8px; color: #00ffcc; }
+    
+    .player-container {
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border-radius: 8px; overflow: hidden; background-color: #000;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Multi-Terminal Concurrent QA Flow</h2>
+  <div class="transport-controls">
+    <button id="btn-restart">⏮ Restart (r)</button>
+    <button id="btn-play">▶ Play Sync</button>
+    <button id="btn-pause">⏸ Pause</button>
+    <div class="time-display" id="clock">00:00.0</div>
+    <button id="btn-j-b5">-5s</button>
+    <button id="btn-j-f5">+5s</button>
+    <select id="speed-control">
+      <option value="0.25">0.25x</option>
+      <option value="1" selected>1.0x</option>
+      <option value="4">4.0x</option>
+      <option value="8">8.0x</option>
+    </select>
+  </div>
+
+  <div class="dashboard">
+    <div class="panel">
+      <h3>👨‍💻 Alice (test100)</h3>
+      <div class="player-container"><div id="player-alice"></div></div>
+    </div>
+    <div class="panel">
+      <h3>👨‍💻 Bob (test200)</h3>
+      <div class="player-container"><div id="player-bob"></div></div>
+    </div>
+    <div class="panel">
+      <h3>🌐 Edge Worker Logs</h3>
+      <div class="player-container"><div id="player-edge"></div></div>
+    </div>
+    <div class="panel">
+      <h3>⚙️ Admin Subsystem / Director</h3>
+      <div class="player-container"><div id="player-admin"></div></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.15.1/dist/bundle/asciinema-player.min.js"></script>
+  <script>
+    let currentSpeed = 1, isPlaying = false;
+    const players = {};
+    
+    function initPlayers(startAt = 0) {
+      if (players.alice) Object.values(players).forEach(p => p.dispose());
+      
+      const config = { autoPlay: isPlaying, preload: true, loop: false, controls: false, fit: 'width', speed: currentSpeed, startAt };
+      
+      players.alice = AsciinemaPlayer.create('./alice.cast', document.getElementById('player-alice'), { ...config, theme: 'monokai' });
+      players.bob = AsciinemaPlayer.create('./bob.cast', document.getElementById('player-bob'), { ...config, theme: 'solarized-dark' });
+      players.edge = AsciinemaPlayer.create('./edge.cast', document.getElementById('player-edge'), { ...config, theme: 'dracula' });
+      players.admin = AsciinemaPlayer.create('./admin.cast', document.getElementById('player-admin'), { ...config, theme: 'tango' });
+    }
+    
+    initPlayers(0);
+
+    document.getElementById('speed-control').addEventListener('change', async (e) => {
+       currentSpeed = parseFloat(e.target.value);
+       const ct = await (players.alice.getCurrentTime?.() || Promise.resolve(0));
+       initPlayers(ct);
+    });
+
+    document.getElementById('btn-play').addEventListener('click', () => { isPlaying = true; Object.values(players).forEach(p => p.play()); });
+    document.getElementById('btn-pause').addEventListener('click', () => { isPlaying = false; Object.values(players).forEach(p => p.pause()); });
+    
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      Object.values(players).forEach(p => p.seek(0));
+      if (!isPlaying) { isPlaying = true; Object.values(players).forEach(p => p.play()); }
+    });
+    
+    async function jump(delta) {
+       const ct = await (players.alice.getCurrentTime?.() || Promise.resolve(0));
+       const next = Math.max(0, ct + delta);
+       Object.values(players).forEach(p => p.seek(next));
+    }
+    
+    document.getElementById('btn-j-b5').addEventListener('click', () => jump(-5));
+    document.getElementById('btn-j-f5').addEventListener('click', () => jump(5));
+
+    async function updateClock() {
+       if (players.alice && players.alice.getCurrentTime) {
+           try {
+               const ct = await players.alice.getCurrentTime();
+               const mins = Math.floor(ct / 60).toString().padStart(2, '0');
+               const secs = Math.floor(ct % 60).toString().padStart(2, '0');
+               document.getElementById('clock').innerText = `${mins}:${secs}.${Math.floor((ct % 1) * 10)}`;
+           } catch (e) {}
+       }
+       requestAnimationFrame(updateClock);
+    }
+    requestAnimationFrame(updateClock);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === ' ') {
+          e.preventDefault();
+          isPlaying = !isPlaying;
+          Object.values(players).forEach(p => isPlaying ? p.play() : p.pause());
+      } else if (e.key === 'ArrowRight') { e.preventDefault(); jump(e.shiftKey ? 1 : 5); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); jump(e.shiftKey ? -1 : -5); }
+      else if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          Object.values(players).forEach(p => p.seek(0));
+          if (!isPlaying) { isPlaying = true; Object.values(players).forEach(p => p.play()); }
+      }
+    });
+  </script>
+</body>
+</html>
