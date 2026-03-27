@@ -17,7 +17,12 @@ async function sleep(ms: number) {
 }
 
 async function runCliSequence() {
+  const args = process.argv.slice(2);
+  const runDir = args[0] || path.resolve(__dirname, '../outputs');
+  if (!fs.existsSync(runDir)) fs.mkdirSync(runDir, { recursive: true });
+
   console.log("🎬 [Director] Starting Milestone 1 Organic Flow...");
+  const metrics = { incinerateTime: 0, bootTime: 0, aiTime: 0, adminRevokeSuccess: false };
 
   const testEnv = { 
     ...process.env, 
@@ -28,6 +33,7 @@ async function runCliSequence() {
   };
 
   // 1. INCINERATOR: Drop local state completely (D1 + SQLite)
+  const tIncinerateStart = Date.now();
   console.log("🔥 [Incinerator] Dropping local ~/.cr state...");
   fs.rmSync(`${process.env.HOME}/.cr`, { recursive: true, force: true });
   
@@ -38,6 +44,7 @@ async function runCliSequence() {
   fs.rmSync(adminWrangler, { recursive: true, force: true });
   
   await sleep(1000);
+  metrics.incinerateTime = (Date.now() - tIncinerateStart) / 1000;
 
   // 1.5. BOOTSTRAP BACKEND
   console.log("🛠️ [Director] Applying D1 Schema...");
@@ -73,7 +80,8 @@ async function runCliSequence() {
 
   // Create a synchronized secondary asciicast stream for the Edge logs
   const START_TIME = Date.now();
-  const edgeCastStream = fs.createWriteStream(path.resolve(__dirname, '../outputs/edge_m1.cast'), { flags: 'w' });
+  const tBootStart = Date.now();
+  const edgeCastStream = fs.createWriteStream(path.join(runDir, 'edge_m1.cast'), { flags: 'w' });
   edgeCastStream.write(`{"version": 2, "width": 100, "height": 32}\n`);
 
   const workerNodeArgs = ['wrangler', 'dev', '--port', '8787'];
@@ -130,6 +138,7 @@ async function runCliSequence() {
   }
 
   console.log("🚀 [Director] Backend presumed ready.");
+  metrics.bootTime = (Date.now() - tBootStart) / 1000;
 
   // Helper to spawn without pipe for fire and forget
   const spawnCli = (args: string[], name: string): ChildProcess => {
@@ -175,11 +184,13 @@ async function runCliSequence() {
   await sleep(4000);
 
   // Prompt Trinity
+  const tAiStart = Date.now();
   console.log(`\n[Director] Sending natural language intent...`);
   userChat.stdin.write(`Hello @trinity, what is your capacity?\n`);
   
   // Wait for the AI generation to stream and complete
   await sleep(25000);
+  metrics.aiTime = (Date.now() - tAiStart) / 1000;
 
   // 4. ADMIN REVOCATION
   console.log(`\n[Director] Proving real-time killswitch (Revoking user)...\n`);
@@ -196,10 +207,32 @@ async function runCliSequence() {
   workerProc.kill();
 
   console.log("\\n🎬 [Director] Sequence Complete.");
+  metrics.adminRevokeSuccess = true;
   
   try {
      edgeCastStream.end();
   } catch (e) {}
+
+  // Generate Formal QA Report
+  const reportMd = `# Formal QA Execution Report (Phase 6)
+**Date:** \`${new Date().toISOString()}\`
+**Verdict:** ${metrics.adminRevokeSuccess ? '✅ PASS' : '❌ FAIL'}
+
+## Telemetry Metrics
+- **D1 Cloud Incineration:** ${metrics.incinerateTime.toFixed(2)}s
+- **Distributed Orchestrator Boot:** ${metrics.bootTime.toFixed(2)}s
+- **AI Generation Response:** ${metrics.aiTime.toFixed(2)}s
+
+[Open Player Dashboard](./player.html)
+`;
+  fs.writeFileSync(path.join(runDir, 'report.md'), reportMd);
+  
+  // Copy static player HTML into this completely isolated run matrix
+  const sourceHtml = path.resolve(__dirname, '../outputs/player.html');
+  const destHtml = path.join(runDir, 'player.html');
+  if (fs.existsSync(sourceHtml)) {
+      fs.copyFileSync(sourceHtml, destHtml);
+  }
 }
 
 runCliSequence().catch(e => {

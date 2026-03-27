@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cognitive Resonance Phase 6 E2E Flow (Milestone 1)</title>
+  <!-- Asciinema Player CSS -->
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/asciinema-player@3.15.1/dist/bundle/asciinema-player.css" />
+  <style>
+    body {
+      background-color: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      margin: 0;
+      padding-top: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #eaeaea;
+    }
+    
+    .transport-controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 20px;
+      background: #2a2a2a;
+      padding: 10px 15px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    
+    .transport-controls button {
+      background: #333;
+      border: 1px solid #555;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    
+    .transport-controls button:hover, .transport-controls select:hover {
+      background: #444;
+    }
+    
+    .transport-controls select {
+      background: #333;
+      border: 1px solid #555;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      outline: none;
+    }
+    
+    .transport-controls .time-display {
+      font-family: monospace;
+      font-size: 14px;
+      color: #00ffcc;
+      margin: 0 10px;
+      min-width: 60px;
+      text-align: center;
+    }
+    .dashboard {
+      display: flex;
+      flex-direction: row;
+      gap: 20px;
+      width: 98%;
+      max-width: 1800px;
+      margin-top: 20px;
+    }
+    .panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel h3 {
+      font-size: 16px;
+      margin-bottom: 10px;
+      color: #00ffcc;
+    }
+    .player-container {
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border-radius: 8px;
+      overflow: hidden;
+      background-color: #000;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Hermetic E2E Organic Identity QA Flow</h2>
+  <p class="subtitle">Cognitive Resonance - Milestone 1 Phase 6</p>
+
+  <div class="transport-controls">
+    <button id="btn-restart" title="Shortcut: R">⏮ Restart (r)</button>
+    <button id="btn-play" title="Shortcut: Space">▶ Play Sync (Space)</button>
+    <button id="btn-pause" title="Shortcut: Space">⏸ Pause (Space)</button>
+    
+    <div class="time-display" id="clock">00:00.0</div>
+    
+    <button id="btn-j-b5" title="Shortcut: Left Arrow">-5s (←)</button>
+    <button id="btn-j-b1" title="Shortcut: Shift + Left Arrow">-1s (⇧←)</button>
+    <button id="btn-frame-b" title="Shortcut: Comma">-0.1s (,)</button>
+    <button id="btn-frame-f" title="Shortcut: Period">+0.1s (.)</button>
+    <button id="btn-j-f1" title="Shortcut: Shift + Right Arrow">+1s (⇧→)</button>
+    <button id="btn-j-f5" title="Shortcut: Right Arrow">+5s (→)</button>
+    
+    <span style="font-weight: bold; margin-left: 10px; color: #aaa;">Speed:</span>
+    <select id="speed-control" title="Playback Speed">
+      <option value="0.25">0.25x</option>
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1.0x</option>
+      <option value="2">2.0x</option>
+      <option value="4">4.0x</option>
+      <option value="8">8.0x</option>
+    </select>
+  </div>
+
+  <div class="dashboard">
+    <div class="panel">
+      <h3>👨‍💻 Client REPL (m1.cast)</h3>
+      <div class="player-container">
+        <div id="demo-client"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>🌐 Edge Worker Logs (edge_m1.cast)</h3>
+      <div class="player-container">
+        <div id="demo-edge"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Asciinema Player JS -->
+  <script src="https://cdn.jsdelivr.net/npm/asciinema-player@3.15.1/dist/bundle/asciinema-player.min.js"></script>
+  <script>
+    let currentSpeed = 1;
+    let isPlaying = false;
+
+    // Initialize both players
+    let clientPlayer = AsciinemaPlayer.create('./m1.cast', document.getElementById('demo-client'), {
+      autoPlay: false,
+      preload: true,
+      loop: false,
+      controls: false,
+      theme: 'monokai',
+      fit: 'width',
+      speed: currentSpeed
+    });
+    
+    let edgePlayer = AsciinemaPlayer.create('./edge_m1.cast', document.getElementById('demo-edge'), {
+      autoPlay: false,
+      preload: true,
+      loop: false,
+      controls: false,
+      theme: 'dracula',
+      fit: 'width',
+      speed: currentSpeed
+    });
+    
+    document.getElementById('speed-control').addEventListener('change', async (e) => {
+       currentSpeed = parseFloat(e.target.value);
+       const ctPromise = typeof clientPlayer.getCurrentTime === 'function' ? clientPlayer.getCurrentTime() : Promise.resolve(0);
+       const ct = await ctPromise;
+       
+       clientPlayer.dispose();
+       edgePlayer.dispose();
+       
+       clientPlayer = AsciinemaPlayer.create('./m1.cast', document.getElementById('demo-client'), {
+          autoPlay: isPlaying, preload: true, loop: false, controls: false, theme: 'monokai', fit: 'width', speed: currentSpeed, startAt: ct
+       });
+       
+       edgePlayer = AsciinemaPlayer.create('./edge_m1.cast', document.getElementById('demo-edge'), {
+          autoPlay: isPlaying, preload: true, loop: false, controls: false, theme: 'dracula', fit: 'width', speed: currentSpeed, startAt: ct
+       });
+    });
+
+    // Setup Transport Buttons
+    document.getElementById('btn-play').addEventListener('click', () => {
+      isPlaying = true;
+      clientPlayer.play();
+      edgePlayer.play();
+    });
+    
+    document.getElementById('btn-pause').addEventListener('click', () => {
+      isPlaying = false;
+      clientPlayer.pause();
+      edgePlayer.pause();
+    });
+    
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      clientPlayer.seek(0);
+      edgePlayer.seek(0);
+      if (!isPlaying) {
+         isPlaying = true;
+         clientPlayer.play();
+         edgePlayer.play();
+      }
+    });
+    
+    async function jump(delta) {
+       const ctPromise = typeof clientPlayer.getCurrentTime === 'function' ? clientPlayer.getCurrentTime() : Promise.resolve(0);
+       const ct = await ctPromise;
+       const next = Math.max(0, ct + delta);
+       clientPlayer.seek(next);
+       edgePlayer.seek(next);
+    }
+    
+    document.getElementById('btn-j-b5').addEventListener('click', () => jump(-5));
+    document.getElementById('btn-j-b1').addEventListener('click', () => jump(-1));
+    document.getElementById('btn-frame-b').addEventListener('click', () => jump(-0.1));
+    document.getElementById('btn-frame-f').addEventListener('click', () => jump(0.1));
+    document.getElementById('btn-j-f1').addEventListener('click', () => jump(1));
+    document.getElementById('btn-j-f5').addEventListener('click', () => jump(5));
+
+    // Live clock loop
+    async function updateClock() {
+       if (typeof clientPlayer.getCurrentTime === 'function') {
+           try {
+               const ct = await clientPlayer.getCurrentTime();
+               const mins = Math.floor(ct / 60).toString().padStart(2, '0');
+               const secs = Math.floor(ct % 60).toString().padStart(2, '0');
+               const ms = Math.floor((ct % 1) * 10).toString();
+               document.getElementById('clock').innerText = `${mins}:${secs}.${ms}`;
+           } catch (e) {}
+       }
+       requestAnimationFrame(updateClock);
+    }
+    requestAnimationFrame(updateClock);
+
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      
+      switch(e.key) {
+        case ' ':
+          e.preventDefault();
+          if (isPlaying) {
+             isPlaying = false;
+             clientPlayer.pause();
+             edgePlayer.pause();
+          } else {
+             isPlaying = true;
+             clientPlayer.play();
+             edgePlayer.play();
+          }
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (e.shiftKey) jump(1);
+          else jump(5);
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (e.shiftKey) jump(-1);
+          else jump(-5);
+          break;
+        case '.':
+        case '>':
+          e.preventDefault();
+          jump(0.1);
+          break;
+        case ',':
+        case '<':
+          e.preventDefault();
+          jump(-0.1);
+          break;
+        case 'r':
+        case 'R':
+        case '0':
+          e.preventDefault();
+          clientPlayer.seek(0);
+          edgePlayer.seek(0);
+          if (!isPlaying) {
+             isPlaying = true;
+             clientPlayer.play();
+             edgePlayer.play();
+          }
+          break;
+      }
+    });
+  </script>
+
+</body>
+</html>

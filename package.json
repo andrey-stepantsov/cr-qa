@@ -5,7 +5,7 @@
   "main": "dist/director.js",
   "scripts": {
     "build": "tsc",
-    "test:milestone1": "env COLUMNS=120 LINES=32 asciinema rec --overwrite -c 'tsx src/director.ts' outputs/m1.cast",
+    "test:milestone1": "tsx src/runner.ts",
     "dev": "tsx src/director.ts"
   },
   "dependencies": {},
