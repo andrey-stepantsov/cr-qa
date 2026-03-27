@@ -62,6 +62,8 @@
     <button id="btn-pause">⏸ Pause</button>
     <div class="time-display" id="clock">00:00.0</div>
     <button id="btn-j-b5">-5s</button>
+    <button id="btn-j-b01">-0.1s</button>
+    <button id="btn-j-f01">+0.1s</button>
     <button id="btn-j-f5">+5s</button>
     <select id="speed-control">
       <option value="0.25">0.25x</option>
@@ -129,6 +131,8 @@
     }
     
     document.getElementById('btn-j-b5').addEventListener('click', () => jump(-5));
+    document.getElementById('btn-j-b01').addEventListener('click', () => jump(-0.1));
+    document.getElementById('btn-j-f01').addEventListener('click', () => jump(0.1));
     document.getElementById('btn-j-f5').addEventListener('click', () => jump(5));
 
     async function updateClock() {
@@ -152,6 +156,8 @@
           Object.values(players).forEach(p => isPlaying ? p.play() : p.pause());
       } else if (e.key === 'ArrowRight') { e.preventDefault(); jump(e.shiftKey ? 1 : 5); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); jump(e.shiftKey ? -1 : -5); }
+      else if (e.key === '<' || e.key === ',') { e.preventDefault(); jump(-0.1); }
+      else if (e.key === '>' || e.key === '.') { e.preventDefault(); jump(0.1); }
       else if (e.key === 'r' || e.key === 'R') {
           e.preventDefault();
           Object.values(players).forEach(p => p.seek(0));

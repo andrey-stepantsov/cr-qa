@@ -5,7 +5,8 @@ import { StringDecoder } from 'string_decoder';
 import crypto from 'crypto';
 
 const args = process.argv.slice(2);
-const runDir = args[0] || path.resolve(__dirname, '../outputs');
+const timestamp = new Date().toISOString().replace(/T/, '_').replace(/:/g, '-').split('.')[0];
+const runDir = args[0] || path.resolve(__dirname, `../reports/${timestamp}`);
 if (!fs.existsSync(runDir)) fs.mkdirSync(runDir, { recursive: true });
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -112,7 +113,7 @@ async function runCliSequence() {
   fs.writeFileSync(path.resolve(CR_ROOT, 'packages/cloudflare-worker/.dev.vars'), `JWT_SECRET="qa_secret_key"\nCR_PUBLIC_KEY="${crPubKeyStr}"\nSECRET_SUPER_ADMIN_IDS="alice@matrix.com"\n`);
 
   const tBootStart = Date.now();
-  const workerProc = spawn(CR_BIN, ['wrangler', 'dev', '--port', '8787'], { 
+  let workerProc = spawn(CR_BIN, ['wrangler', 'dev', '--port', '8787'], { 
      cwd: path.resolve(CR_ROOT, 'packages/cloudflare-worker'), env: testEnv, stdio: ['ignore', 'pipe', 'pipe'] 
   });
   attachRecorder(workerProc, edgeCst); // ALL edge logs go securely to edge.cast natively!
@@ -128,6 +129,16 @@ async function runCliSequence() {
   }
   if (!ready) { logAdmin("❌ [Director] Backend failed to start."); process.exit(1); }
   metrics.bootTime = (Date.now() - tBootStart) / 1000;
+
+  // 1.8. SANITY COMMANDS
+  logAdmin("\n[Director] Running basic sanity and help commands...");
+  const sanityHelp = spawn(CR_BIN, [...CR_ARGS, 'help'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(sanityHelp, adminCst);
+  await new Promise(r => sanityHelp.on('close', r));
+  
+  const sanityDashHelp = spawn(CR_BIN, [...CR_ARGS, '--help'], { env: testEnv, stdio: 'pipe' });
+  attachRecorder(sanityDashHelp, adminCst);
+  await new Promise(r => sanityDashHelp.on('close', r));
 
   // 2. ADMIN PROVISIONING
   logAdmin("\n[Director] Minting PKI invite token for Alice...");
@@ -189,18 +200,60 @@ async function runCliSequence() {
 
   const tAiStart = Date.now();
   
-  // AI Orchestrator Execution
-  logAdmin(`\n[Director] Sending Natural Language Intent from Alice...`);
-  writeInputToCast(`> @trinity Hello from Alice, tell me a joke.\n`, aliceCst);
-  aliceChat2.stdin.write(`@trinity Hello from Alice, tell me a joke.\n`);
+  // AI Orchestrator Execution: Complex Tasks & Timeouts
   
-  await sleep(5000);
+  logAdmin(`\n[Director] Simulating Network Failure... Killing Edge Worker...`);
+  workerProc.kill();
+  await sleep(1000);
   
-  logAdmin(`\n[Director] Sending Natural Language Intent from Bob concurrently...`);
-  writeInputToCast(`> @trinity Hello from Bob, what is Alice asking you?\n`, bobCst);
-  bobChat.stdin.write(`@trinity Hello from Bob, what is Alice asking you?\n`);
+  logAdmin(`\n[Director] Triggering intentional timeout in Alice...`);
+  writeInputToCast(`> @trinity Are you still there?\n`, aliceCst);
+  aliceChat2.stdin.write(`@trinity Are you still there?\n`);
+  
+  await sleep(7000); // Let UI show a graceful fetch timeout
 
-  await sleep(22000);
+  logAdmin(`\n🚀 [Director] Restarting Edge Worker...`);
+  workerProc = spawn(CR_BIN, ['wrangler', 'dev', '--port', '8787'], { 
+     cwd: path.resolve(CR_ROOT, 'packages/cloudflare-worker'), env: testEnv, stdio: ['ignore', 'pipe', 'pipe'] 
+  });
+  attachRecorder(workerProc, edgeCst);
+  await sleep(4000); // Allow backend to boot
+  
+  logAdmin(`\n[Director] Sending successful Trinity request...`);
+  writeInputToCast(`> @trinity Hello, system is restored. Status?\n`, aliceCst);
+  aliceChat2.stdin.write(`@trinity Hello, system is restored. Status?\n`);
+  
+  await sleep(8000);
+
+  logAdmin(`\n[Director] Executing DSL Pipeline: Basic Self-Reference...`);
+  writeInputToCast(`> @alice:trinity#latest(get content)\n`, aliceCst);
+  aliceChat2.stdin.write(`@alice:trinity#latest(get content)\n`);
+  
+  await sleep(6000);
+  
+  logAdmin(`\n[Director] Sending Complex Structured Request from Alice...`);
+  writeInputToCast(`> @guide Please list the active system personas and their capabilities in a structured JSON format.\n`, aliceCst);
+  aliceChat2.stdin.write(`@guide Please list the active system personas and their capabilities in a structured JSON format.\n`);
+  
+  await sleep(12000);
+
+  logAdmin(`\n[Director] Executing DSL Pipeline: Complex Lisp Filtering...`);
+  writeInputToCast(`> @alice:guide#latest(json-path '$.personas')\n`, aliceCst);
+  aliceChat2.stdin.write(`@alice:guide#latest(json-path '$.personas')\n`);
+  
+  await sleep(6000);
+  
+  logAdmin(`\n[Director] Sending Operator Request from Bob concurrently...`);
+  writeInputToCast(`> @operator Please verify our D1 database configuration and confirm the health node status.\n`, bobCst);
+  bobChat.stdin.write(`@operator Please verify our D1 database configuration and confirm the health node status.\n`);
+
+  await sleep(15000);
+
+  logAdmin(`\n[Director] Executing Cross-User Boundary Test (Unauthorized Access)...`);
+  writeInputToCast(`> @alice:guide#1()\n`, bobCst);
+  bobChat.stdin.write(`@alice:guide#1()\n`);
+
+  await sleep(8000);
   metrics.aiTime = (Date.now() - tAiStart) / 1000;
 
   // 4. ADMIN REVOCATION
@@ -247,14 +300,8 @@ async function runCliSequence() {
 `;
   fs.writeFileSync(path.join(runDir, 'report.md'), reportMd);
   
-  const sourceHtml = path.resolve(__dirname, '../outputs/player.html');
+  const sourceHtml = path.resolve(__dirname, 'player.html');
   if (fs.existsSync(sourceHtml)) fs.copyFileSync(sourceHtml, path.join(runDir, 'player.html'));
-  
-  // Clone to outputs
-  ['alice.cast', 'bob.cast', 'edge.cast', 'admin.cast'].forEach(f => {
-      const src = path.join(runDir, f);
-      if (fs.existsSync(src)) fs.copyFileSync(src, path.resolve(__dirname, '../outputs', f));
-  });
 }
 
 runCliSequence().catch(e => { console.error(e); process.exit(1); });
