@@ -199,12 +199,22 @@ async function runCliSequence() {
   spawnCli(['identity', 'switch', 'test100@example.com'], 'IdentityTracker');
   await sleep(2000);
 
+  // Assert Authenticated HTTP API Call via CLI
+  console.log(`\n🛠️ [Director] Asserting authenticated boundary via Name Change...`);
+  spawnCli(['user', 'set-name', 'Neo (The One)'], 'ProfileUpdate');
+  await sleep(3000);
+
   // Reconnect as Active Profile
   console.log(`\n👨‍💻 [Director:User] Re-entering ecosystem as active profile [test100@example.com]...`);
   const activeChat = spawn(CR_BIN, [...CR_ARGS, 'chat'], { env: testEnv, stdio: 'pipe' });
   activeChat.stdout.on('data', d => process.stdout.write(d));
   activeChat.stderr.on('data', d => process.stderr.write(d));
   await sleep(3000);
+
+  // Verify REPL identity context
+  console.log(`\n[Director] Verifying internal REPL identity context...`);
+  activeChat.stdin.write(`/whoami\n`);
+  await sleep(2000);
 
   // Prompt Trinity
   const tAiStart = Date.now();
