@@ -1,7 +1,8 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { StringDecoder } from 'string_decoder';
+import crypto from 'crypto';
 
 // Resolve CR root relative to cr-qa workspace
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
@@ -59,7 +60,6 @@ async function runCliSequence() {
   // Extract the real matching public key from the CLI's admin vault
   let crPubKeyStr = "NOT_FOUND";
   try {
-     const crypto = require('crypto');
      const priv = crypto.createPrivateKey(fs.readFileSync(path.join(CR_ROOT, '.keys/dev/ed25519.pem')));
      crPubKeyStr = crypto.createPublicKey(priv).export({type:'spki', format:'der'}).toString('base64');
   } catch (e) {
