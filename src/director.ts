@@ -238,6 +238,10 @@ async function runCliSequence() {
   await sleep(12000);
 
   logAdmin(`\n[Director] Executing DSL Pipeline: Complex Lisp Filtering...`);
+  // TODO: Implement Semantic DSL macro parsing inside the CLI.
+  // Currently, @user:agent#turn(lisp) is not intercepted locally and blindly routes as a raw LLM prompt.
+  // We need to build the AST traversal engine to securely evaluate list expressions (json-path)
+  // offline, and rigorously trap/handle syntax or resolution execution failures dynamically.
   writeInputToCast(`> @alice:guide#latest(json-path '$.personas')\n`, aliceCst);
   aliceChat2.stdin.write(`@alice:guide#latest(json-path '$.personas')\n`);
   
